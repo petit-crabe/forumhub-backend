@@ -31,3 +31,4 @@ CREATE TRIGGER trigger_set_topic_author
 CREATE TRIGGER trigger_set_comment_author
   BEFORE INSERT ON public."Comment"
   FOR EACH ROW EXECUTE FUNCTION set_comment_author();
+
