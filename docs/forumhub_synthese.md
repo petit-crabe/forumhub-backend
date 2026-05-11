@@ -10,8 +10,8 @@
 Trois entités, schéma ERD validé :
 
 - **auth.users** — géré par Supabase Auth (`id`, `email`, `encrypted_password`, `created_at`)
-- **Topic** — sujet de forum (`id`, `title`, `content`, `created_at`, `is_published`, `author_id FK`)
-- **Comment** — commentaire lié à un topic (`id`, `content`, `created_at`, `author_id FK`, `topic_id FK`)
+- **Topic** — sujet de forum (`id`, `title`, `content`, `created_at`, `is_published`, `deleted_at`, `author_id FK`)
+- **Comment** — commentaire lié à un topic (`id`, `content`, `created_at`, `deleted_at`, `author_id FK`, `topic_id FK`)
 
 Relations : un utilisateur écrit plusieurs topics et plusieurs commentaires ; un topic reçoit plusieurs commentaires.
 
@@ -21,16 +21,27 @@ Relations : un utilisateur écrit plusieurs topics et plusieurs commentaires ; u
 
 Row Level Security activé sur `Topic` et `Comment`. Policies implémentées et validées via Postman pour deux utilisateurs de test (Sophie et Bob) :
 
-| Table | Policy | Comportement |
-|-------|--------|-------------|
-| Topic | SELECT | Visible si `is_published = true` ou si l'auteur est connecté |
-| Topic | INSERT | `author_id` automatiquement renseigné via trigger |
-| Topic | UPDATE | Seul l'auteur peut modifier |
-| Topic | DELETE | Seul l'auteur peut supprimer |
-| Comment | SELECT | Visible uniquement si le topic parent est publié |
-| Comment | INSERT | `author_id` automatiquement renseigné via trigger |
-| Comment | UPDATE | Seul l'auteur peut modifier |
-| Comment | DELETE | Seul l'auteur peut supprimer |
+| Table   | Policy | Comportement                                                                  |
+| ------- | ------ | ----------------------------------------------------------------------------- |
+| Topic   | SELECT | Visible si `is_published = true` et non supprimé, ou si l'auteur est connecté |
+| Topic   | INSERT | `author_id` automatiquement renseigné via trigger                             |
+| Topic   | UPDATE | Seul l'auteur peut modifier (couvre le soft delete)                           |
+| Topic   | DELETE | Seul l'auteur peut supprimer                                                  |
+| Comment | SELECT | Visible si topic parent publié et non supprimé, ou si l'auteur est connecté   |
+| Comment | INSERT | `author_id` automatiquement renseigné via trigger                             |
+| Comment | UPDATE | Seul l'auteur peut modifier (couvre le soft delete)                           |
+| Comment | DELETE | Seul l'auteur peut supprimer                                                  |
+
+---
+
+## Soft Delete
+
+Suppression logique implémentée sur `Topic` et `Comment` via une colonne `deleted_at` (`timestamptz`, `NULL` par défaut) :
+
+- Un enregistrement est considéré supprimé si `deleted_at IS NOT NULL`
+- Le soft delete se déclenche via un `PATCH` avec `deleted_at = now()`
+- L'auteur voit ses propres enregistrements supprimés ; les autres utilisateurs ne les voient pas
+- Les commentaires d'un topic supprimé logiquement sont invisibles pour les non-auteurs
 
 ---
 
@@ -38,9 +49,9 @@ Row Level Security activé sur `Topic` et `Comment`. Policies implémentées et 
 
 Deux fonctions `SECURITY DEFINER` et leurs triggers associés, déclenchés `BEFORE INSERT` :
 
-| Trigger | Table | Fonction | Rôle |
-|---------|-------|----------|------|
-| `trigger_set_topic_author` | `Topic` | `set_topic_author()` | Injecte `auth.uid()` dans `author_id` |
+| Trigger                      | Table     | Fonction               | Rôle                                  |
+| ---------------------------- | --------- | ---------------------- | ------------------------------------- |
+| `trigger_set_topic_author`   | `Topic`   | `set_topic_author()`   | Injecte `auth.uid()` dans `author_id` |
 | `trigger_set_comment_author` | `Comment` | `set_comment_author()` | Injecte `auth.uid()` dans `author_id` |
 
 ---
@@ -61,7 +72,8 @@ forumhub/
 ├── migrations/
 │   ├── 01_create_tables.sql
 │   ├── 02_rls_policies.sql
-│   └── 03_triggers_functions.sql
+│   ├── 03_triggers_functions.sql
+│   └── 04_soft_delete.sql
 ├── docs/
 │   └── forumhub_synthese.md
 └── README.md
@@ -75,4 +87,4 @@ Intégration frontend : appels au backend Supabase depuis une interface **HTML/C
 
 ---
 
-*Prompt de reprise :* Récapitulatif de session — ForumHub / Supabase + Postman. Tables `Topic` et `Comment`, RLS activé, policies CRUD validées, signup et authentification fonctionnels. Triggers `set_topic_author` et `set_comment_author` en place. Fichiers SQL exportés et structurés dans le dépôt GitHub. On attaque l'intégration dans un **frontend simple** : appels au backend Supabase depuis une interface HTML/CSS/JS vanilla.
+_Prompt de reprise :_ Récapitulatif de session — ForumHub / Supabase + Postman. Tables `Topic` et `Comment`, RLS activé, policies CRUD validées, signup et authentification fonctionnels. Triggers `set_topic_author` et `set_comment_author` en place. Fichiers SQL exportés et structurés dans le dépôt GitHub. On attaque l'intégration dans un **frontend simple** : appels au backend Supabase depuis une interface HTML/CSS/JS vanilla.

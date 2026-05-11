@@ -1,10 +1,11 @@
 -- topic
-CREATE POLICY "topic_delete_author_only"
+CREATE POLICY "topic_soft_delete_author_only"
 ON public."Topic"
 AS PERMISSIVE
-FOR DELETE
+FOR UPDATE
 TO authenticated
-USING (auth.uid() = author_id);
+USING (auth.uid() = author_id)
+WITH CHECK (auth.uid() = author_id);
 
 CREATE POLICY "topic_insert_authenticated"
 ON public."Topic"
@@ -18,7 +19,10 @@ ON public."Topic"
 AS PERMISSIVE
 FOR SELECT
 TO authenticated
-USING (((is_published = true) OR (auth.uid() = author_id)));
+USING (
+  (deleted_at IS NULL AND is_published = true)
+  OR (auth.uid() = author_id)
+);
 
 CREATE POLICY "topic_update_author_only"
 ON public."Topic"
@@ -30,12 +34,13 @@ WITH CHECK (auth.uid() = author_id);
 
 
 -- comment
-CREATE POLICY "comment_delete_author_only"
+CREATE POLICY "comment_soft_delete_author_only"
 ON public."Comment"
 AS PERMISSIVE
-FOR DELETE
+FOR UPDATE
 TO authenticated
-USING (auth.uid() = author_id);
+USING (auth.uid() = author_id)
+WITH CHECK (auth.uid() = author_id);
 
 CREATE POLICY "comment_insert_authenticated"
 ON public."Comment"
@@ -50,11 +55,16 @@ AS PERMISSIVE
 FOR SELECT
 TO authenticated
 USING (
-  (EXISTS (
-    SELECT 1
-    FROM "Topic"
-    WHERE (("Topic".id = "Comment".topic_id) AND ("Topic".is_published = true))
-  ))
+  (
+    deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public."Topic"
+      WHERE "Topic".id = "Comment".topic_id
+      AND "Topic".is_published = true
+      AND "Topic".deleted_at IS NULL
+    )
+  )
+  OR (auth.uid() = author_id)
 );
 
 CREATE POLICY "comment_update_author_only"
